@@ -1,0 +1,34 @@
+# Inference configuration
+
+# Which model artifact to load
+model:
+  artifact_dir: artifacts/exp001_lgbm_baseline/  # populated after training
+
+# InferenceState settings
+state:
+  # Maximum number of past time steps to keep in the rolling buffer per symbol.
+  # Must be >= max rolling window used in feature engineering.
+  buffer_size: 30
+  # Whether to warm up the state from historical data before the prediction loop.
+  warm_up: true
+  warm_up_data: data/processed/features.parquet
+
+# Prediction settings
+prediction:
+  # Clip predictions to this range (prevents extreme outliers)
+  clip_min: -5.0
+  clip_max:  5.0
+  # Whether to post-process predictions with calibration
+  calibrate: false
+
+# Local inference simulator settings
+local_simulator:
+  # Path to data that will be fed batch-by-batch (mimics Kaggle API)
+  data_path: data/processed/features.parquet
+  # Number of rows per batch (Kaggle sends ~5000 rows per time_id)
+  # null = use the natural time_id grouping
+  batch_size: null
+  # How many batches to simulate (null = all)
+  max_batches: null
+  # Where to write prediction output
+  output_path: reports/local_inference_predictions.parquet

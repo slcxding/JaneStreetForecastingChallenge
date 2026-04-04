@@ -1,0 +1,118 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "janestreet-forecasting"
+version = "0.1.0"
+description = "Jane Street Real-Time Market Data Forecasting — research codebase"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+dependencies = [
+    # Data processing — Polars is primary; pandas kept for ML-lib compatibility
+    "polars>=0.20",
+    "pandas>=2.0",
+    "numpy>=1.26",
+    "pyarrow>=14.0",          # Parquet backend
+
+    # Config & validation
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "pyyaml>=6.0",
+
+    # CLI & logging
+    "typer[all]>=0.12",       # [all] pulls in rich + shell completion
+    "loguru>=0.7",
+    "rich>=13.0",
+
+    # Models
+    "lightgbm>=4.2",
+    "xgboost>=2.0",
+    "catboost>=1.2",
+    "scikit-learn>=1.4",
+
+    # Tuning
+    "optuna>=3.5",
+    "optuna-integration[lightgbm]>=3.5",
+
+    # Experiment tracking (optional; graceful degradation if absent)
+    "mlflow>=2.10",
+
+    # Notebook support
+    "jupyter>=1.0",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+    "plotly>=5.18",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.4",
+    "mypy>=1.9",
+    "pre-commit>=3.7",
+    "types-pyyaml",
+]
+
+[project.scripts]
+js-prepare   = "janestreet_forecasting.cli.prepare_data:app"
+js-features  = "janestreet_forecasting.cli.build_features:app"
+js-train     = "janestreet_forecasting.cli.train:app"
+js-evaluate  = "janestreet_forecasting.cli.evaluate:app"
+js-tune      = "janestreet_forecasting.cli.tune:app"
+js-infer     = "janestreet_forecasting.cli.infer:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# ---------------------------------------------------------------------------
+# Ruff — linter + formatter (replaces flake8 + isort + black)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "UP",       # pyupgrade
+    "B",        # flake8-bugbear
+    "C4",       # flake8-comprehensions
+    "SIM",      # flake8-simplify
+    "TCH",      # type-checking imports
+]
+ignore = [
+    "E501",   # line too long — handled by formatter
+    "B008",   # function calls in default args (Typer pattern)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["janestreet_forecasting"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ---------------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.10"
+plugins = ["pydantic.mypy"]
+strict = false
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"

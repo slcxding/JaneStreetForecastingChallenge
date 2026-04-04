@@ -1,0 +1,33 @@
+# Experiment 004 — Weighted ensemble of baseline models
+
+experiment_id: exp004_ensemble
+description: >
+  Simple weighted average of OOF predictions from exp001, exp002, exp003.
+  Weights are optimised on the OOF set using scipy.optimize.minimize.
+
+ensemble:
+  method: weighted_average    # "weighted_average" | "rank_average" | "stacking"
+  # Source experiments to ensemble (must have been trained and have OOF preds)
+  members:
+    - experiment_id: exp001_lgbm_baseline
+      artifact_dir: artifacts/exp001_lgbm_baseline
+    - experiment_id: exp002_xgb_baseline
+      artifact_dir: artifacts/exp002_xgb_baseline
+    - experiment_id: exp003_catboost_baseline
+      artifact_dir: artifacts/exp003_catboost_baseline
+
+  # Weight optimisation
+  weight_optimization:
+    enabled: true
+    method: nelder_mead      # scipy optimisation method
+    n_trials: 200            # Number of Optuna trials for weight search
+    # Fixed weights used if optimization is disabled
+    fixed_weights: [0.4, 0.3, 0.3]
+
+data_config: configs/data/default.yaml
+train_config: configs/train/default.yaml
+
+tags:
+  model: ensemble
+  stage: baseline
+  members: "lgbm+xgb+catboost"

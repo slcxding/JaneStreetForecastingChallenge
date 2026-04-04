@@ -1,0 +1,37 @@
+# Training configuration — CV strategy, data splits, and run settings.
+
+# Cross-validation strategy
+cv:
+  strategy: purged_group_kfold  # "purged_group_kfold" | "walk_forward" | "simple"
+  n_splits: 5
+  purge_days: 5     # Dates to purge before each test fold (prevent autocorrelation leakage)
+  embargo_days: 10  # Dates to embargo after each test fold
+
+  # Walk-forward settings (only used if strategy: walk_forward)
+  walk_forward:
+    min_train_days: 500
+    test_window: 100
+    step_days: 100
+    embargo_days: 5
+
+  # Simple hold-out settings (only used if strategy: simple)
+  simple:
+    val_fraction: 0.20
+    purge_days: 5
+
+# Data inputs (relative to project root)
+data:
+  features_path: data/processed/features.parquet
+  target_col: responder_6
+  weight_col: weight
+  date_col: date_id
+
+# What to save after training
+artifacts:
+  save_oof_predictions: true    # Out-of-fold predictions (for ensembling)
+  save_feature_importance: true
+  save_model: true
+  save_config_copy: true        # Always copy the config into the artifact dir
+
+# Reproducibility
+seed: 42

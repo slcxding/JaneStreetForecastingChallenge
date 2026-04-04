@@ -1,0 +1,24 @@
+# Experiment 002 — XGBoost baseline
+
+experiment_id: exp002_xgb_baseline
+description: >
+  XGBoost baseline with identical features to exp001. Comparison point for
+  whether LightGBM or XGBoost is the stronger base model on this dataset.
+
+data_config: configs/data/default.yaml
+features_config: configs/features/default.yaml
+model_config: configs/models/xgb_baseline.yaml
+train_config: configs/train/default.yaml
+
+overrides:
+  train:
+    cv:
+      n_splits: 5
+  model:
+    params:
+      n_estimators: 500
+
+tags:
+  model: xgboost
+  stage: baseline
+  features: default

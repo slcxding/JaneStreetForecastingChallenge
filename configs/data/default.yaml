@@ -1,0 +1,49 @@
+# Data configuration
+# Controls where data lives and how it is loaded.
+
+paths:
+  raw_dir: data/raw
+  interim_dir: data/interim
+  processed_dir: data/processed
+  external_dir: data/external
+
+  # Expected filenames inside raw_dir
+  train_file: train.parquet
+  test_file:  test.parquet
+  sample_submission: sample_submission.csv
+
+# Column roles — matches schemas.py but allows per-experiment overrides
+columns:
+  date_id:   date_id
+  time_id:   time_id
+  symbol_id: symbol_id
+  weight:    weight
+  target:    responder_6
+
+# Loading behaviour
+loading:
+  # Set to a positive integer to limit rows (useful for fast iteration).
+  # null = load everything.
+  max_rows: null
+
+  # Columns to drop before feature engineering (saves memory).
+  # The non-target responders are listed here because using them as features
+  # would cause target leakage (they share information with responder_6).
+  drop_columns:
+    - responder_0
+    - responder_1
+    - responder_2
+    - responder_3
+    - responder_4
+    - responder_5
+    - responder_7
+    - responder_8
+  # NOTE: responder_6 is kept as the target.
+  # NOTE: responder_*_lag_0 columns are KEPT — they are previous-step values
+  #       provided by the Kaggle API and are safe features (no leakage).
+
+# Validation settings
+validation:
+  strict: true               # Raise on validation errors (false = log only)
+  warn_missing_rate: 0.30    # Warn if a feature column has >30% nulls
+  error_missing_rate: 0.80   # Error if a feature column has >80% nulls

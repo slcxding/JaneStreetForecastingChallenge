@@ -1,0 +1,24 @@
+# CatBoost baseline hyperparameters
+
+model_type: catboost
+
+params:
+  loss_function: RMSE
+  eval_metric: RMSE
+  verbose: 0
+  iterations: 1000
+  learning_rate: 0.05
+  depth: 6
+  l2_leaf_reg: 3.0
+  random_seed: 42
+  thread_count: -1
+  # CatBoost handles NaN natively — no imputation needed
+  nan_mode: Min
+
+early_stopping:
+  enabled: true
+  rounds: 100
+
+feature_importance:
+  type: PredictionValuesChange
+  top_n: 50

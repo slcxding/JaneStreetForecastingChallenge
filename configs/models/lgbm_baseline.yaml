@@ -1,0 +1,32 @@
+# LightGBM baseline hyperparameters
+# These are deliberately conservative starting points. Use `make tune` to find
+# better values via Optuna.
+
+model_type: lightgbm
+
+params:
+  objective: regression
+  metric: rmse
+  verbosity: -1
+  n_estimators: 1000
+  learning_rate: 0.05
+  num_leaves: 128
+  max_depth: -1          # -1 = no limit (controlled by num_leaves)
+  min_child_samples: 50
+  feature_fraction: 0.8
+  bagging_fraction: 0.8
+  bagging_freq: 1
+  reg_alpha: 0.1         # L1
+  reg_lambda: 1.0        # L2
+  random_state: 42
+  n_jobs: -1
+
+early_stopping:
+  enabled: true
+  rounds: 100            # Stop if val metric doesn't improve for 100 rounds
+  verbose: false
+
+# Feature importance export
+feature_importance:
+  type: gain             # "gain" or "split"
+  top_n: 50             # Save top-N features to report

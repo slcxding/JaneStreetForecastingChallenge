@@ -1,0 +1,59 @@
+# Feature engineering configuration
+
+# Lag features
+# The Kaggle API already provides responder_*_lag_0 (1-step lag).
+# Additional lags can be computed from the InferenceState rolling buffer
+# if the buffer is long enough.
+lag:
+  enabled: true
+  # Responder columns to create additional lags for (beyond the API-provided lag_0)
+  columns:
+    - responder_0_lag_0
+    - responder_6_lag_0
+  # How many additional lags to compute (e.g. [1,2,3] = lags 1, 2, 3 steps back)
+  # These are *additional* lags on top of the lag_0 already provided.
+  windows: [1, 2, 4]
+
+# Rolling statistics
+rolling:
+  enabled: true
+  # Feature columns to compute rolling stats on
+  # (use a subset to control feature count — full list = 79 × 4 × n_windows cols)
+  columns:
+    - feature_00
+    - feature_01
+    - feature_02
+    - feature_03
+    - feature_04
+    - feature_05
+    - feature_06
+    - feature_07
+    - feature_08
+    - feature_09
+    - responder_0_lag_0
+    - responder_6_lag_0
+  # Rolling window sizes (in time_id steps, per symbol)
+  windows: [5, 10, 20]
+  # Which statistics to compute
+  stats: [mean, std, min, max]
+
+# Cross-sectional features (computed across symbols within each time_id)
+cross_sectional:
+  enabled: true
+  # Features to cross-sectionally rank and normalise
+  columns:
+    - feature_00
+    - feature_01
+    - feature_02
+    - responder_6_lag_0
+  # Rank type: "standard" | "min" | "max" | "dense" | "ordinal"
+  rank_method: average
+  # Whether to z-score normalise after ranking
+  normalize: true
+
+# Output
+output:
+  # Where to write the processed feature parquet
+  path: data/processed/features.parquet
+  # Whether to include the original raw columns in the output
+  include_raw_features: true

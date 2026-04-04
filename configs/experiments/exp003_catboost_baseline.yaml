@@ -1,0 +1,24 @@
+# Experiment 003 — CatBoost baseline
+
+experiment_id: exp003_catboost_baseline
+description: >
+  CatBoost baseline. CatBoost handles NaN natively (no imputation step needed)
+  and often performs well on financial tabular data.
+
+data_config: configs/data/default.yaml
+features_config: configs/features/default.yaml
+model_config: configs/models/catboost_baseline.yaml
+train_config: configs/train/default.yaml
+
+overrides:
+  train:
+    cv:
+      n_splits: 5
+  model:
+    params:
+      iterations: 500
+
+tags:
+  model: catboost
+  stage: baseline
+  features: default

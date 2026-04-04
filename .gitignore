@@ -205,3 +205,46 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# =============================================================================
+# Jane Street Forecasting — project-specific ignores
+# =============================================================================
+
+# Competition data (large; never commit to git — use Kaggle API to download)
+data/raw/*
+data/interim/*
+data/processed/*
+data/external/*
+!data/**/.gitkeep
+
+# Model artifacts (large binary files)
+artifacts/*
+!artifacts/.gitkeep
+!artifacts/mlruns/     # Allow MLflow tracking metadata
+
+# Generated reports (reproducible from code)
+reports/*
+!reports/.gitkeep
+
+# Environment files (may contain API keys)
+.env
+.env.local
+
+# Kaggle API credentials
+kaggle.json
+~/.kaggle/
+
+# MLflow local store (large; re-create with mlflow ui)
+artifacts/mlruns/
+
+# Optuna study databases
+*.db
+optuna_studies/
+
+# Notebook output (keep inputs, not outputs)
+# Uncomment if you want clean notebook commits:
+# notebooks/**/*.ipynb
+
+# OS artefacts
+.DS_Store
+Thumbs.db

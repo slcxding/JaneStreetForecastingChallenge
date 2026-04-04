@@ -1,0 +1,28 @@
+# Experiment 001 — LightGBM baseline
+# This is the first thing to run. Establishes a reproducible performance floor.
+
+experiment_id: exp001_lgbm_baseline
+description: >
+  LightGBM baseline with default feature engineering (raw features + lag_0
+  columns) and PurgedGroupKFold CV. No feature selection. No tuning.
+
+# Inherit base configs (values here override the base)
+data_config: configs/data/default.yaml
+features_config: configs/features/default.yaml
+model_config: configs/models/lgbm_baseline.yaml
+train_config: configs/train/default.yaml
+
+# Overrides specific to this experiment
+overrides:
+  train:
+    cv:
+      n_splits: 5
+  model:
+    params:
+      n_estimators: 500   # Faster for baseline; increase once pipeline is confirmed
+
+# MLflow tags for this run
+tags:
+  model: lightgbm
+  stage: baseline
+  features: default
