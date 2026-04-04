@@ -2,34 +2,41 @@
 Time-aware cross-validation splits for financial time-series.
 
 Standard k-fold CV is invalid for financial data because:
-  1. Train and test sets can overlap in time — autocorrelated errors leak
-     through, making OOF scores over-optimistic.
-  2. Even non-overlapping adjacent folds suffer from autocorrelation between
-     the last training rows and first test rows.
+  1. Autocorrelation: adjacent rows share information (the market at t is
+     correlated with t-1). Random splitting creates leakage between folds.
+  2. Rolling-feature overlap: a 10-period rolling mean at time t uses data
+     from t-9 through t. If t-5 is in validation, its rolling feature computed
+     from training data already contains validation-period information.
 
 We implement:
 
-  PurgedGroupKFold
-  ────────────────
-  Groups by `date_id` so that all rows from the same date are in the same
-  fold.  Before training, a configurable number of dates at the fold boundary
-  are *purged* from the train set.  After the test fold, an *embargo* of
-  additional dates is excluded from any future training fold.
+  PurgedGroupKFold (forward_only=True — default)
+  ─────────────────────────────────────────────
+  Test folds are ordered chronologically. Each fold trains ONLY on dates that
+  come BEFORE the test fold (plus purge/embargo exclusions).
 
-  Illustration (5 folds, purge=2, embargo=1):
+  Illustration (4 folds, purge=2, embargo=1):
 
-  Date:  1  2  3  4  5  6  7  8  9  10  11  12  13  14  15
-  Fold1: TR TR TR TR TR TR TR TR TR [P] [P]  TS  TS  TS  [E]
-  Fold2: TR TR TR TR TR TR [P] [P] TS  TS   TS  [E] ...
+  Date:  0  1  2  3  4  5  6  7  8  9  10  11  12  13  14  15
+  Fold0: TS TS TS TS              (no train — not enough history)
+  Fold1: TR TR TR TR TR [P]  TS  TS  TS  TS [E]
+  Fold2: TR TR TR TR TR TR TR TR [P]  TS  TS  TS  TS [E]
+  Fold3: TR TR .... [P]  TS  TS  TS  TS [E]
 
-  [P] = purged (excluded from train)
-  [E] = embargo (excluded from train in that fold)
-  TS  = test set
+  NOTE: fold 0 is SKIPPED when forward_only=True and there is insufficient
+  training history. The `min_train_dates` parameter controls the threshold.
+
+  forward_only=False: uses all non-excluded dates as training regardless of
+  whether they come before or after the test fold. This is the original
+  López de Prado formulation and gives more training data per fold, but
+  allows the model to see future market regimes when predicting past ones.
+  Appropriate ONLY for cross-validation as a hyperparameter selection proxy,
+  NOT for temporal realism.
 
   WalkForwardSplit
   ─────────────────
-  A simpler expanding-window split that adds one fold's worth of data to the
-  training set each iteration.  Useful for final model training diagnostics.
+  Expanding-window walk-forward split. Each fold adds one step of training
+  data. The most temporally honest split — use for final model diagnostics.
 
 Reference: "Advances in Financial Machine Learning" (López de Prado, 2018),
 Chapter 7.
@@ -63,14 +70,20 @@ class PurgedGroupKFold:
     K-Fold cross-validator that groups by date and applies purge + embargo.
 
     Args:
-        n_splits:    Number of folds.
-        purge_days:  Number of dates immediately before the test fold to remove
-                     from training.  These dates likely share information with
-                     the test period (e.g. via rolling features with a window
-                     that spans the boundary).
-        embargo_days: Number of dates immediately after the test fold to
-                     exclude from *subsequent* training folds. Prevents leakage
-                     from information that becomes available after prediction.
+        n_splits:        Number of folds.
+        purge_days:      Dates immediately before each test fold to remove from
+                         training.  Set to >= your largest rolling window so the
+                         boundary features don't bleed across the fold edge.
+        embargo_days:    Dates immediately after each test fold to exclude from
+                         training of that fold.
+        forward_only:    If True (default), each fold trains ONLY on dates
+                         strictly before the test window.  This is temporally
+                         honest.  If False, all non-excluded dates are used as
+                         training (the original LP formulation — more training
+                         data but allows future regimes to inform past predictions).
+        min_train_dates: Minimum training dates required for a fold to be
+                         yielded.  Folds with less history are skipped.
+                         Only relevant when forward_only=True.
     """
 
     def __init__(
@@ -78,12 +91,16 @@ class PurgedGroupKFold:
         n_splits: int = 5,
         purge_days: int = 5,
         embargo_days: int = 10,
+        forward_only: bool = True,
+        min_train_dates: int = 30,
     ) -> None:
         if n_splits < 2:
             raise ValueError("n_splits must be ≥ 2.")
         self.n_splits = n_splits
         self.purge_days = purge_days
         self.embargo_days = embargo_days
+        self.forward_only = forward_only
+        self.min_train_dates = min_train_dates
 
     def split(
         self,
@@ -93,15 +110,20 @@ class PurgedGroupKFold:
         """
         Yield FoldIndices for each split.
 
+        When forward_only=True, test folds are ordered chronologically and
+        each fold trains only on data that precedes it.  Folds with
+        insufficient training history (< min_train_dates) are silently skipped
+        — callers should assert they received at least one fold.
+
         Args:
-            df:       Full DataFrame sorted by date_col.
+            df:       Full DataFrame.  Does NOT need to be pre-sorted.
             date_col: Column used to group rows into dates.
 
         Yields:
             FoldIndices with train/val row positions and dates.
         """
         dates = df[date_col].to_numpy()
-        unique_dates = np.unique(dates)
+        unique_dates = np.sort(np.unique(dates))
         n_dates = len(unique_dates)
 
         if n_dates < self.n_splits * 2:
@@ -110,53 +132,79 @@ class PurgedGroupKFold:
                 "with meaningful train/test splits."
             )
 
-        # Assign each unique date to a fold
-        date_fold = np.array_split(unique_dates, self.n_splits)
+        # Divide sorted unique dates into n_splits consecutive chunks.
+        # Chunk 0 = earliest dates (fold 0 test set), etc.
+        date_chunks = np.array_split(unique_dates, self.n_splits)
 
-        for fold_idx, test_dates in enumerate(date_fold):
+        yielded = 0
+        for fold_idx, test_dates in enumerate(date_chunks):
+            test_date_min = int(test_dates.min())
+            test_date_max = int(test_dates.max())
+
+            # Purge: dates immediately before the test window
+            purge_mask = (unique_dates >= test_date_min - self.purge_days) & (
+                unique_dates < test_date_min
+            )
+            purge_date_set = set(unique_dates[purge_mask].tolist())
+
+            # Embargo: dates immediately after the test window
+            embargo_mask = (unique_dates > test_date_max) & (
+                unique_dates <= test_date_max + self.embargo_days
+            )
+            embargo_date_set = set(unique_dates[embargo_mask].tolist())
+
             test_date_set = set(test_dates.tolist())
-            test_date_min = test_dates.min()
-            test_date_max = test_dates.max()
-
-            # Purge: exclude dates just before the test window
-            purge_date_set = set(
-                unique_dates[
-                    (unique_dates >= test_date_min - self.purge_days)
-                    & (unique_dates < test_date_min)
-                ].tolist()
-            )
-
-            # Embargo: exclude dates just after the test window
-            embargo_date_set = set(
-                unique_dates[
-                    (unique_dates > test_date_max)
-                    & (unique_dates <= test_date_max + self.embargo_days)
-                ].tolist()
-            )
-
             excluded = test_date_set | purge_date_set | embargo_date_set
 
-            train_mask = ~np.isin(dates, list(excluded))
+            if self.forward_only:
+                # Training is restricted to dates strictly BEFORE the test window.
+                # The purge removes boundary dates; the embargo is irrelevant here
+                # (no dates after the test fold enter training anyway).
+                train_date_candidates = unique_dates[unique_dates < test_date_min]
+                train_date_candidates = train_date_candidates[
+                    ~np.isin(train_date_candidates, list(excluded))
+                ]
+            else:
+                # Use all non-excluded dates regardless of temporal position.
+                train_date_candidates = unique_dates[
+                    ~np.isin(unique_dates, list(excluded))
+                ]
+
+            if len(train_date_candidates) < self.min_train_dates:
+                logger.debug(
+                    "Fold {} skipped: only {} training dates (need {})",
+                    fold_idx, len(train_date_candidates), self.min_train_dates,
+                )
+                continue
+
+            train_mask = np.isin(dates, train_date_candidates)
             val_mask = np.isin(dates, list(test_date_set))
 
             train_idx = np.where(train_mask)[0]
             val_idx = np.where(val_mask)[0]
-            train_dates = np.unique(dates[train_mask])
-            val_dates = test_dates
+            train_dates_out = np.sort(np.unique(dates[train_mask]))
 
             logger.debug(
-                "Fold {}/{}: train_dates={} val_dates={} purged={} embargoed={}",
+                "Fold {}/{}: train={} dates, val={} dates | purged={} embargoed={}",
                 fold_idx + 1, self.n_splits,
-                len(train_dates), len(val_dates),
+                len(train_dates_out), len(test_dates),
                 len(purge_date_set), len(embargo_date_set),
             )
 
+            yielded += 1
             yield FoldIndices(
                 fold_idx=fold_idx,
                 train_idx=train_idx,
                 val_idx=val_idx,
-                train_dates=train_dates,
-                val_dates=val_dates,
+                train_dates=train_dates_out,
+                val_dates=test_dates,
+            )
+
+        if yielded == 0:
+            raise ValueError(
+                f"PurgedGroupKFold yielded 0 folds. "
+                f"Increase n_dates, reduce min_train_dates ({self.min_train_dates}), "
+                f"or reduce purge_days/embargo_days."
             )
 
     def get_n_splits(self) -> int:
@@ -171,10 +219,10 @@ class WalkForwardSplit:
     `test_window` dates as validation.  The training window grows by
     `step_days` each fold.
 
-    Useful for:
-      - Simulating a live deployment scenario
-      - Evaluating model degradation over time
-      - Final production model diagnostics
+    This is the most temporally honest CV strategy.  Use it for:
+      - Final model diagnostics before deployment
+      - Detecting model degradation over time
+      - Simulating production deployment
     """
 
     def __init__(
@@ -195,7 +243,7 @@ class WalkForwardSplit:
         date_col: str = S.DATE_ID,
     ) -> Generator[FoldIndices, None, None]:
         dates = df[date_col].to_numpy()
-        unique_dates = np.unique(dates)
+        unique_dates = np.sort(np.unique(dates))
 
         start = self.min_train_days
         fold_idx = 0
@@ -229,7 +277,7 @@ def train_val_date_split(
     Simple chronological train/val split for quick experiments.
 
     The last `val_fraction` of unique dates are held out for validation.
-    `purge_days` dates before the split are removed from training.
+    `purge_days` dates before the split point are removed from training.
 
     This is NOT for final model selection — use PurgedGroupKFold for that.
     """

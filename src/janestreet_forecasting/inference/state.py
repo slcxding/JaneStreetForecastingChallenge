@@ -109,7 +109,11 @@ class InferenceState:
 
     def compute_features(self, batch: pl.DataFrame) -> pl.DataFrame:
         """
-        Compute rolling and lag features from the history buffer.
+        Compute rolling and lag features for the current batch.
+
+        Rolling stats are computed over [buffer history] + [current row],
+        matching the offline RollingTransformer which includes the current row.
+        Call update() AFTER this method to add current rows to the buffer.
 
         Args:
             batch: Current time step's rows.
@@ -120,33 +124,48 @@ class InferenceState:
         if not self.feature_cols and not self.lag_cols:
             return batch
 
+        # Build a symbol → current row lookup for O(1) access
+        current_rows: dict[int, dict[str, Any]] = {
+            row[S.SYMBOL_ID]: row
+            for row in batch.iter_rows(named=True)
+        }
+
         # Compute new columns for each row in the batch
         new_col_data: dict[str, list[Any]] = defaultdict(list)
 
         for symbol in batch[S.SYMBOL_ID].to_list():
             history = list(self._buffers[symbol])  # Past rows, oldest first
+            current = current_rows.get(symbol, {})
 
-            # Rolling statistics from history
+            # Rolling statistics: buffer + current row (inclusive, mirrors offline)
             for col in self.feature_cols:
                 col_history = np.array(
                     [r.get(col, np.nan) for r in history], dtype=np.float32
                 )
+                current_val = np.float32(current.get(col, np.nan))
+                col_with_current = np.append(col_history, current_val)
+
                 for win in self.rolling_windows:
-                    window_vals = col_history[-win:] if len(col_history) >= win else col_history
+                    window_vals = (
+                        col_with_current[-win:]
+                        if len(col_with_current) >= win
+                        else col_with_current
+                    )
                     for stat in self.rolling_stats:
                         key = f"{col}_roll{win}_{stat}"
-                        if len(window_vals) == 0:
+                        valid = window_vals[~np.isnan(window_vals)]
+                        if len(valid) == 0:
                             new_col_data[key].append(np.nan)
                         elif stat == "mean":
-                            new_col_data[key].append(float(np.nanmean(window_vals)))
+                            new_col_data[key].append(float(np.mean(valid)))
                         elif stat == "std":
                             new_col_data[key].append(
-                                float(np.nanstd(window_vals)) if len(window_vals) > 1 else np.nan
+                                float(np.std(valid)) if len(valid) > 1 else np.nan
                             )
                         elif stat == "min":
-                            new_col_data[key].append(float(np.nanmin(window_vals)))
+                            new_col_data[key].append(float(np.min(valid)))
                         elif stat == "max":
-                            new_col_data[key].append(float(np.nanmax(window_vals)))
+                            new_col_data[key].append(float(np.max(valid)))
 
             # Additional lag features from history
             for lag_col in self.lag_cols:

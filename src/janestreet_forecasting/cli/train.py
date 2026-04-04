@@ -94,6 +94,8 @@ def main(
             n_splits=cv_cfg["n_splits"],
             purge_days=cv_cfg["purge_days"],
             embargo_days=cv_cfg["embargo_days"],
+            forward_only=cv_cfg.get("forward_only", True),
+            min_train_dates=cv_cfg.get("min_train_dates", 30),
         )
     elif strategy == "walk_forward":
         wf = cv_cfg["walk_forward"]
@@ -106,15 +108,31 @@ def main(
     else:
         raise ValueError(f"Unknown CV strategy: {strategy}")
 
-    # Determine feature columns (all columns that aren't index/target/weight)
-    non_feature = set(
-        [train_cfg["data"]["date_col"],
-         "time_id", "symbol_id",
-         train_cfg["data"]["target_col"],
-         train_cfg["data"]["weight_col"]]
-    )
-    feature_cols = [c for c in df.columns if c not in non_feature]
-    logger.info("Using {} feature columns", len(feature_cols))
+    # Load feature column list from the saved pipeline — do NOT derive it by
+    # excluding index/target/weight from the DataFrame.  Exclusion-based
+    # selection would silently include any intermediate columns that leaked
+    # through the pipeline (e.g. zscore temp columns).
+    pipeline_path = PROCESSED_DIR / "feature_pipeline.pkl"
+    if pipeline_path.exists():
+        from janestreet_forecasting.features.pipelines import FeaturePipeline
+        pipeline = FeaturePipeline.load(pipeline_path)
+        feature_cols = pipeline.feature_cols
+        logger.info("Feature columns from saved pipeline: {}", len(feature_cols))
+    else:
+        # Fallback for cases where the raw features file is used directly
+        # (e.g. skip feature engineering step).  Still use explicit exclusion
+        # but from schemas — not hard-coded strings.
+        from janestreet_forecasting.data import schemas as S
+        non_feature = set(S.INDEX_COLS + [
+            train_cfg["data"]["target_col"],
+            train_cfg["data"]["weight_col"],
+        ])
+        feature_cols = [c for c in df.columns if c not in non_feature]
+        logger.warning(
+            "Pipeline not found at {}. Derived {} feature cols by exclusion. "
+            "Run `js-features` first for deterministic feature sets.",
+            pipeline_path, len(feature_cols),
+        )
 
     # Dispatch to the appropriate trainer
     if model_type in ("lightgbm", "lgbm"):

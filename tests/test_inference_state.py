@@ -64,26 +64,43 @@ class TestInferenceStateBasics:
 
 
 class TestRollingFeatureComputation:
-    def test_rolling_mean_is_nan_without_history(self, tiny_df):
-        """Before any updates, rolling features should be NaN."""
+    def test_rolling_mean_on_first_batch_equals_current_value(self, tiny_df):
+        """Without prior history, rolling mean = current row's value (window partially filled).
+
+        compute_features() includes the current batch in the rolling window, mirroring
+        the offline RollingTransformer (min_samples=1).  With no buffer history, only
+        the current value is available → rolling mean = current value.
+        """
         state = InferenceState(
             buffer_size=10,
             feature_cols=[S.FEATURE_COLS[0]],
             rolling_windows=[3],
             rolling_stats=["mean"],
         )
+        col = S.FEATURE_COLS[0]
         batches = _split_by_time(tiny_df)
         first_batch = batches[0]
 
-        # No history yet — all rolling features should be NaN
         result = state.compute_features(first_batch)
-        roll_col = f"{S.FEATURE_COLS[0]}_roll3_mean"
-        if roll_col in result.columns:
-            vals = result[roll_col].to_numpy()
-            assert np.all(np.isnan(vals)), "Expected NaN without history"
+        roll_col = f"{col}_roll3_mean"
+        assert roll_col in result.columns
+
+        # Rolling mean with only current row available = current value
+        for row_orig, row_result in zip(
+            first_batch.iter_rows(named=True), result.iter_rows(named=True)
+        ):
+            assert abs(row_result[roll_col] - row_orig[col]) < 1e-5, (
+                f"Expected rolling mean = current value {row_orig[col]:.4f}, "
+                f"got {row_result[roll_col]:.4f}"
+            )
 
     def test_rolling_mean_correct_after_updates(self, tiny_df):
-        """After N updates, rolling mean should match manual calculation."""
+        """After N updates, rolling mean should match manual calculation.
+
+        compute_features() includes the current batch's value in the rolling window
+        (matching offline RollingTransformer). Expected = mean of last (window-1)
+        buffered values + current value.
+        """
         col = S.FEATURE_COLS[0]
         window = 3
         state = InferenceState(
@@ -94,20 +111,24 @@ class TestRollingFeatureComputation:
         )
         batches = _split_by_time(tiny_df)
 
-        # Update with first 3 batches (so we have exactly window history)
+        # Update with first 3 batches (buffer has window worth of history)
         for b in batches[:window]:
             state.update(b)
 
-        # Now compute features for the 4th batch
-        result = state.compute_features(batches[window])
+        # Compute features for the 4th batch (index=window)
+        current_batch = batches[window]
+        result = state.compute_features(current_batch)
         roll_col = f"{col}_roll{window}_mean"
 
         if roll_col in result.columns:
-            # For each symbol, manually compute expected rolling mean
             for sym in result[S.SYMBOL_ID].to_list()[:2]:
                 hist = list(state._buffers[sym])
-                expected_vals = [r.get(col, np.nan) for r in hist[-window:]]
-                expected_mean = np.nanmean(expected_vals) if expected_vals else np.nan
+                # Past values from buffer (last window-1 entries)
+                past_vals = [r.get(col, np.nan) for r in hist[-(window - 1):]]
+                # Current value from this batch
+                sym_current = current_batch.filter(pl.col(S.SYMBOL_ID) == sym)
+                current_val = float(sym_current[col][0]) if len(sym_current) > 0 else np.nan
+                expected_mean = np.nanmean(past_vals + [current_val])
 
                 sym_row = result.filter(pl.col(S.SYMBOL_ID) == sym)
                 if len(sym_row) > 0:

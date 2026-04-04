@@ -35,7 +35,7 @@ rolling:
   # Rolling window sizes (in time_id steps, per symbol)
   windows: [5, 10, 20]
   # Which statistics to compute
-  stats: [mean, std, min, max]
+  stats: [mean, std]   # supported: mean, std, min, max, zscore
 
 # Cross-sectional features (computed across symbols within each time_id)
 cross_sectional:

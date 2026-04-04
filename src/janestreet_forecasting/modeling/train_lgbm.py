@@ -86,8 +86,6 @@ class LGBMTrainer:
         """
         n = len(df)
         oof_predictions = np.zeros(n, dtype=np.float32)
-        oof_mask = np.zeros(n, dtype=bool)
-
         all_importances: list[np.ndarray] = []
 
         for fold in self.cv.split(df, date_col=self.date_col):
@@ -96,7 +94,6 @@ class LGBMTrainer:
             all_importances.append(importance)
 
             oof_predictions[fold.val_idx] = oof_pred
-            oof_mask[fold.val_idx] = True
 
             # Compute metrics for this fold
             val_df = df[fold.val_idx]

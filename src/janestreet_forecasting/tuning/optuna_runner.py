@@ -272,30 +272,32 @@ def _suggest_catboost_params(trial: optuna.Trial) -> dict[str, Any]:
 
 def _train_lgbm_fold(params, X_train, y_train, w_train, X_val, y_val, w_val) -> np.ndarray:
     import lightgbm as lgb
-    n_est = params.pop("n_estimators", 500)
+    # Copy so we never mutate the caller's dict — especially important when
+    # n_jobs > 1 (parallel Optuna trials share the same suggest_params dict).
+    p = {k: v for k, v in params.items() if k != "n_estimators"}
+    n_est = params.get("n_estimators", 500)
     dtrain = lgb.Dataset(X_train, label=y_train, weight=w_train)
     dval = lgb.Dataset(X_val, label=y_val, weight=w_val, reference=dtrain)
     model = lgb.train(
-        params,
+        p,
         dtrain,
         num_boost_round=n_est,
         valid_sets=[dval],
         callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(0)],
     )
-    params["n_estimators"] = n_est  # Restore for next trial
     return model.predict(X_val).astype(np.float32)
 
 
 def _train_xgb_fold(params, X_train, y_train, w_train, X_val, y_val, w_val) -> np.ndarray:
     import xgboost as xgb
-    n_est = params.pop("n_estimators", 500)
+    p = {k: v for k, v in params.items() if k != "n_estimators"}
+    n_est = params.get("n_estimators", 500)
     dtrain = xgb.DMatrix(X_train, label=y_train, weight=w_train)
     dval = xgb.DMatrix(X_val, label=y_val, weight=w_val)
     model = xgb.train(
-        params, dtrain, num_boost_round=n_est,
+        p, dtrain, num_boost_round=n_est,
         evals=[(dval, "val")], early_stopping_rounds=50, verbose_eval=False,
     )
-    params["n_estimators"] = n_est
     return model.predict(dval).astype(np.float32)
 
 

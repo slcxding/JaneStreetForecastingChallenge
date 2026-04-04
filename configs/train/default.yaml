@@ -4,8 +4,10 @@
 cv:
   strategy: purged_group_kfold  # "purged_group_kfold" | "walk_forward" | "simple"
   n_splits: 5
-  purge_days: 5     # Dates to purge before each test fold (prevent autocorrelation leakage)
-  embargo_days: 10  # Dates to embargo after each test fold
+  purge_days: 5       # Dates to purge before each test fold (≥ your max rolling window)
+  embargo_days: 10    # Dates to embargo after each test fold
+  forward_only: true  # Train only on dates before the test fold (temporally honest)
+  min_train_dates: 30 # Skip folds with fewer training dates (e.g. earliest folds)
 
   # Walk-forward settings (only used if strategy: walk_forward)
   walk_forward:

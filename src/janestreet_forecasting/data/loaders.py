@@ -141,12 +141,21 @@ def make_synthetic_dataset(
     for col in S.RESPONDER_COLS:
         data[col] = (rng.standard_normal(rows) * 0.01).astype(np.float32)
 
-    # Lag columns — shift responders by one (mimics API provision)
+    # Lag columns — shift responders by one TIME STEP per symbol.
+    # Must respect symbol boundaries: lag for symbol s at time t is the
+    # value for symbol s at time t-1, NOT the value of the preceding row
+    # in the flat array (which belongs to a different symbol).
+    #
+    # Layout: the array is ordered as symbol_0, symbol_1, ..., symbol_N-1
+    # repeated for each (date, time) combination. We shift within each
+    # symbol's contiguous block.
+    n_steps = n_dates * n_times_per_date  # total time steps
     for col, lag_col in zip(S.RESPONDER_COLS, S.LAG_COLS):
-        shifted = np.empty_like(data[col])
-        shifted[0] = np.nan
-        shifted[1:] = data[col][:-1]
-        data[lag_col] = shifted
+        src = data[col].reshape(n_steps, n_symbols)  # (time_steps, symbols)
+        lagged = np.empty_like(src)
+        lagged[0, :] = np.nan          # first time step has no prior
+        lagged[1:, :] = src[:-1, :]   # each row gets the previous time step's value
+        data[lag_col] = lagged.reshape(rows)
 
     df = pl.DataFrame(data)
     logger.info(
