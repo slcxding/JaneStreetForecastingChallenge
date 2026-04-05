@@ -52,6 +52,3 @@ def setup_logging(level: str | None = None, json: bool | None = None) -> None:
         )
 
 
-def get_logger(name: str):  # type: ignore[return]
-    """Return a logger bound to the given module name."""
-    return logger.bind(module=name)

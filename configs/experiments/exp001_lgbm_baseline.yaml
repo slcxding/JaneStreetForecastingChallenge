@@ -3,8 +3,9 @@
 
 experiment_id: exp001_lgbm_baseline
 description: >
-  LightGBM baseline with default feature engineering (raw features + lag_0
-  columns) and PurgedGroupKFold CV. No feature selection. No tuning.
+  LightGBM baseline with default feature engineering (raw features + lag_1
+  columns + rolling/cross-sectional stats) and PurgedGroupKFold CV.
+  No feature selection or hyperparameter tuning — establishes a reproducible floor.
 
 # Inherit base configs (values here override the base)
 data_config: configs/data/default.yaml

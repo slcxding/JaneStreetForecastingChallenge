@@ -22,9 +22,6 @@ REPORTS_DIR: Path = PROJECT_ROOT / "reports"
 CONFIGS_DIR: Path = PROJECT_ROOT / "configs"
 NOTEBOOKS_DIR: Path = PROJECT_ROOT / "notebooks"
 
-# MLflow tracking URI — local by default, overridable via env
-MLFLOW_TRACKING_URI: str = f"file://{ARTIFACTS_DIR / 'mlruns'}"
-
 
 def get_experiment_dir(experiment_id: str) -> Path:
     """Return the artifact directory for a specific experiment run."""

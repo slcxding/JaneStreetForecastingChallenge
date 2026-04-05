@@ -1,24 +1,24 @@
 # Feature engineering configuration
+#
+# Column naming note: lag.parquet contains responder_*_lag_1 (previous calendar
+# day). The Kaggle inference API provides them as responder_*_lag_0. Both refer
+# to "most recent prior observation" — only the suffix differs by context.
+# Use the suffix that matches your data source here.
 
-# Lag features
-# The Kaggle API already provides responder_*_lag_0 (1-step lag).
-# Additional lags can be computed from the InferenceState rolling buffer
-# if the buffer is long enough.
+# Additional lag features (beyond the lag_1 columns already in lag.parquet)
 lag:
   enabled: true
-  # Responder columns to create additional lags for (beyond the API-provided lag_0)
+  # Compute extra lags from these columns (e.g. lag_2, lag_4 = 2 and 4 steps back)
   columns:
-    - responder_0_lag_0
-    - responder_6_lag_0
-  # How many additional lags to compute (e.g. [1,2,3] = lags 1, 2, 3 steps back)
-  # These are *additional* lags on top of the lag_0 already provided.
-  windows: [1, 2, 4]
+    - responder_0_lag_1
+    - responder_6_lag_1
+  # Steps back to generate (lag_1 already exists, so these are truly additional)
+  windows: [2, 4]
 
-# Rolling statistics
+# Rolling statistics (per symbol, over time_id steps)
 rolling:
   enabled: true
-  # Feature columns to compute rolling stats on
-  # (use a subset to control feature count — full list = 79 × 4 × n_windows cols)
+  # Subset of features to roll (full 79 × n_windows × n_stats = ~500+ cols)
   columns:
     - feature_00
     - feature_01
@@ -30,30 +30,26 @@ rolling:
     - feature_07
     - feature_08
     - feature_09
-    - responder_0_lag_0
-    - responder_6_lag_0
-  # Rolling window sizes (in time_id steps, per symbol)
+    - responder_0_lag_1
+    - responder_6_lag_1
   windows: [5, 10, 20]
-  # Which statistics to compute
-  stats: [mean, std]   # supported: mean, std, min, max, zscore
+  # Supported: mean, std, min, max, zscore
+  # Note: "skew" is intentionally omitted — naive implementation was mislabelled
+  stats: [mean, std]
 
-# Cross-sectional features (computed across symbols within each time_id)
+# Cross-sectional features (rank within each time_id across symbols)
 cross_sectional:
   enabled: true
-  # Features to cross-sectionally rank and normalise
   columns:
     - feature_00
     - feature_01
     - feature_02
-    - responder_6_lag_0
-  # Rank type: "standard" | "min" | "max" | "dense" | "ordinal"
+    - responder_6_lag_1
+  # Polars rank methods: average | min | max | dense | ordinal | random
   rank_method: average
-  # Whether to z-score normalise after ranking
-  normalize: true
+  normalize: true   # z-score after ranking → approximately normal distribution
 
 # Output
 output:
-  # Where to write the processed feature parquet
   path: data/processed/features.parquet
-  # Whether to include the original raw columns in the output
   include_raw_features: true
